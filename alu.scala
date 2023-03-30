@@ -407,7 +407,7 @@ class SysDSP_ALU extends Component {
       SysDSPconfig()
     ) // Pad the sequence with default configs if there are less than 64 entries
   )
-
+  
   // First DSP block
   val dsp1 = new SysDSP_Wrapper(configs.read(io.sel))
   dsp1.io.A := io.a.asUInt
@@ -421,7 +421,19 @@ class SysDSP_ALU extends Component {
   dsp2.io.B := dsp1.io.M(35 downto 18)
   dsp2.io.CLK0 := clock
   dsp2.io.RST0 := reset
+  
   dsp2.io.cascadeIn_MUX := Cascade.CASCADE
-
+  dsp2.io.cascadeOut := dsp1.io.cascadeIn
+  dsp2.io.cascadeOut := dsp.io.cascadeIn
+  
   io.result := dsp2.io.M.asSInt
+  
+  when(reset) {
+    dsp1.io.A := 0
+    dsp1.io.B := 0
+    dsp1.io.C := 0
+    dsp2.io.A := 0
+    dsp2.io.B := 0
+    dsp2.io.C := 0
+  }
 }
