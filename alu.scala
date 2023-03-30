@@ -1,23 +1,32 @@
 import spinal.core._
 import spinal.lib._
 
-// This code defines two SpinalHDL components: SysDSP_Wrapper and SysDSP_Mult18_Operation.
+// The code defines a wrapper for a DSP block, which is a black box. The wrapper takes in configuration 
+// parameters for the DSP block and instantiates it with the given parameters. It also maps the clock 
+// domain and adds an RTL path.
 
-// SysDSP_Wrapper is a black box that wraps an external System DSP block. It has a set of input and output signals, 
-// and it uses the Generic class to define some configuration parameters. The io bundle defines the input and output
-// signals, and they are mapped to the generic parameters using the addGeneric method. The mapClockDomain method 
-// maps the clock domain of the SysDSP_Wrapper component to the current one. The addRTLPath method specifies the 
-// path to the Verilog code of the wrapped block, and the noIoPrefix method disables prefixing the I/O signals 
-// with the instance name.
+// The SysDSP_ALU class defines an ALU component that selects a DSP block from a memory based on a 
+// selector input and uses it to perform arithmetic operations on input data. The configs memory stores 
+// the different configurations for the DSP block, and the init method initializes the memory with the 
+// default configurations. The ALU component selects a DSP block based on the sel input, and the 
+// input data a, b, and c are fed into the selected DSP block via its input ports A, B, and C.
+// The output M of the selected DSP block is then used to calculate the result of the arithmetic 
+// operation and is stored in result.
 
-// SysDSP_Mult18_Operation is a component that uses SysDSP_Wrapper to perform a multiplication of two 18-bit 
-// signed integers. It has an io bundle that defines the input and output signals. It uses a Mem to store a set of 
-// configuration parameters for SysDSP_Wrapper, and it selects one of them based on the sel input signal. 
-// The selected configuration is used to set the generic parameters of SysDSP_Wrapper using the input signals 
-// of SysDSP_Mult18_Operation. Finally, the result and cascadeOut output signals of SysDSP_Wrapper are converted 
-// to SInt and connected to the output signals of SysDSP_Mult18_Operation.
+// he code defines multiple SpinalEnum objects, which are used to define the different configuration 
+// options for the DSP block, such as the multiplication mode, the ALU mode, the source mux mode, etc.
 
-class SysDSP_Wrapper(config: Mult18Config) extends BlackBox {
+// In this particular implementation, the SysDSP_ALU component includes a cascade input and a cascade 
+// output. The cascade input is connected to the cascadeOut output of the previous SysDSP_Wrapper 
+// block, while the cascade output is connected to the cascadeIn input of the next SysDSP_Wrapper block.
+// This allows the output of one SysDSP_Wrapper block to be used as an input to the next block in the chain.
+
+// The cascadeIn_MUX and cascadeOut_MUX configuration parameters determine which inputs are connected 
+// to the cascade input and cascade output, respectively. In this case, both parameters are set to
+// SourceMuxMode.CASCADE_IN, indicating that the cascadeIn and cascadeOut signals should be used for
+// the cascade input and output, respectively.
+
+class SysDSP_Wrapper(config: SysDSPconfig) extends BlackBox {
 
   val generic = new Generic {
     val MULTMODE = config.multMode.value
@@ -55,9 +64,11 @@ class SysDSP_Wrapper(config: Mult18Config) extends BlackBox {
     val SREG = in Bool ()
     val MODE = in UInt (2 bits)
     val ACC_MODE = in Bool ()
-
-    val cascadeIn = in UInt (36 bits)
-    val cascadeOut = out UInt (36 bits)
+    
+    val cascadeIn_MUX = in UInt(3 bits)
+    val cascadeOut_MUX = in UInt(3 bits)
+    val cascadeIn = in UInt(36 bits)
+    val cascadeOut = out UInt(36 bits)
 
     val CE0 = in Bool ()
     val CE1 = in Bool ()
@@ -91,7 +102,7 @@ class SysDSP_Wrapper(config: Mult18Config) extends BlackBox {
   noIoPrefix()
 }
 
-case class Mult18Config(
+case class SysDSPconfig(
     name: String = "",
     multMode: SpinalEnumElement[SpinalEnumCraft] = MultMode.MULT18X18,
     aluMode: SpinalEnumElement[SpinalEnumCraft] = AluMode.ADD,
@@ -99,10 +110,8 @@ case class Mult18Config(
     sourceA_MUX: SpinalEnumElement[SpinalEnumCraft] = SourceMuxMode.A,
     sourceB_MUX: SpinalEnumElement[SpinalEnumCraft] = SourceMuxMode.B,
     amux: SpinalEnumElement[SpinalEnumCraft] = SourceMuxMode.ADD,
-    cascadeIn_MUX: SpinalEnumElement[SpinalEnumCraft] =
-      SourceMuxMode.CASCADE_IN,
-    cascadeOut_MUX: SpinalEnumElement[SpinalEnumCraft] =
-      SourceMuxMode.CASCADE_IN,
+    cascadeIn_MUX: SpinalEnumElement[SpinalEnumCraft] = SourceMuxMode.CASCADE_IN,
+    cascadeOut_MUX: SpinalEnumElement[SpinalEnumCraft] = SourceMuxMode.CASCADE_IN,
     AREG: Boolean = false,
     BREG: Boolean = false,
     CREG: Boolean = false,
@@ -146,19 +155,7 @@ object AMux extends SpinalEnum(binarySequential) {
 }
 
 object Cascade extends SpinalEnum(binarySequential) {
-  val DISABLED, CASCADE = newElement()
-}
-
-object SourceBMux extends SpinalEnum(binarySequential) {
-  val B, ACC = newElement()
-}
-
-object AMux extends SpinalEnum(binarySequential) {
-  val B, C = newElement()
-}
-
-object Cascade extends SpinalEnum(binarySequential) {
-  val DISABLED, CASCADE = newElement()
+  val DISABLE, CASCADE = newElement()
 }
 
 object SourceAAdder extends SpinalEnum(binarySequential) {
@@ -225,70 +222,67 @@ object RoundingMode extends SpinalEnum {
   val TRUNC, ROUND_HALF_UP, ROUND_HALF_DOWN, ROUND_HALF_TO_EVEN = newElement()
 }
 
-import spinal.core._
-import spinal.lib._
 
-class SysDSP_Mult18_Operation extends Component {
+
+
+class SysDSP_ALU extends Component {
   val io = new Bundle {
     val sel = in UInt (6 bits)
-    val a = in SInt (18 bits)
-    val b = in SInt (18 bits)
-    val c = in SInt (18 bits)
-    val cascadeIn = in SInt (54 bits)
-    val result = out SInt (54 bits)
-    val cascadeOut = out SInt (54 bits)
+    val a = in UInt (32 bits)
+    val b = in UInt (32 bits)
+    val c = in UInt (32 bits)
+    val result = out UInt (64 bits)
   }
 
   // Initialize the configs
-
-  val configs = Mem(Mult18Config(), 32)
+  val configs = Mem(SysDSPconfig(), 32)
 
   configs.init(
     Seq(
       // Unsigned addition
-      Mult18Config(
+      SysDSPconfig(
         name = "ADD_UNSIGNED",
         multMode = MultMode.MULT18X18,
         aluMode = AluMode.ADD,
         signed = false
       ),
       // Signed addition
-      Mult18Config(
+      SysDSPconfig(
         name = "ADD_SIGNED",
         multMode = MultMode.MULT18X18,
         aluMode = AluMode.ADD,
         signed = true
       ),
       // Unsigned subtraction
-      Mult18Config(
+      SysDSPconfig(
         name = "SUB_UNSIGNED",
         multMode = MultMode.MULT18X18,
         aluMode = AluMode.SUBTRACT,
         signed = false
       ),
       // Signed subtraction
-      Mult18Config(
+      SysDSPconfig(
         name = "SUB_SIGNED",
         multMode = MultMode.MULT18X18,
         aluMode = AluMode.SUBTRACT,
         signed = true
-      )
+      ),
       // AND operation
-        Mult18Config (
+        SysDSPconfig (
           name = "AND",
           aluMode = AluMode.PASS_A,
           sourceA_MUX = SourceMuxMode.A,
           sourceB_MUX = SourceMuxMode.B
         ),
       // OR operation
-      Mult18Config(
+      SysDSPconfig(
         name = "OR",
         aluMode = AluMode.PASS_A,
         sourceA_MUX = SourceMuxMode.NOTA,
         sourceB_MUX = SourceMuxMode.NOTB
       ),
       // NAND operation
-      Mult18Config(
+      SysDSPconfig(
         name = "NAND",
         aluMode = AluMode.PASS_A,
         sourceA_MUX = SourceMuxMode.A,
@@ -296,7 +290,7 @@ class SysDSP_Mult18_Operation extends Component {
         amux = SourceMuxMode.NOTB
       ),
       // NOR operation
-      Mult18Config(
+      SysDSPconfig(
         name = "NOR",
         aluMode = AluMode.PASS_A,
         sourceA_MUX = SourceMuxMode.NOTA,
@@ -304,7 +298,7 @@ class SysDSP_Mult18_Operation extends Component {
         amux = SourceMuxMode.NOTB
       ),
       // XOR operation
-      Mult18Config(
+      SysDSPconfig(
         name = "XOR",
         aluMode = AluMode.PASS_A,
         sourceA_MUX = SourceMuxMode.A,
@@ -312,97 +306,97 @@ class SysDSP_Mult18_Operation extends Component {
         amux = SourceMuxMode.XOR
       ),
       // XNOR operation
-      Mult18Config(
+      SysDSPconfig(
         name = "XNOR",
         aluMode = AluMode.PASS_A,
         sourceA_MUX = SourceMuxMode.A,
         sourceB_MUX = SourceMuxMode.B,
         amux = SourceMuxMode.XNOR
       ),
-      Mult18Config(
+      SysDSPconfig(
         name = "MULT18X18_UNSIGNED",
         multMode = MultMode.MULT18X18,
         signed = false
       ),
       // Signed 18x18 multiplication
-      Mult18Config(
+      SysDSPconfig(
         name = "MULT18X18_SIGNED",
         multMode = MultMode.MULT18X18,
         signed = true
       ),
       // Unsigned 9x9 multiplication
-      Mult18Config(
+      SysDSPconfig(
         name = "MULT9X9_UNSIGNED",
         multMode = MultMode.MULT9X9,
         signed = false
       ),
       // Signed 9x9 multiplication
-      Mult18Config(
+      SysDSPconfig(
         name = "MULT9X9_SIGNED",
         multMode = MultMode.MULT9X9,
         signed = true
       ),
       // Unsigned 27x18 multiplication
-      Mult18Config(
+      SysDSPconfig(
         name = "MULT27X18_UNSIGNED",
         multMode = MultMode.MULT27X18,
         signed = false
       ),
       // Signed 27x18 multiplication
-      Mult18Config(
+      SysDSPconfig(
         name = "MULT27X18_SIGNED",
         multMode = MultMode.MULT27X18,
         signed = true
       ),
       // Unsigned 36x36 multiplication
-      Mult18Config(
+      SysDSPconfig(
         name = "MULT36X36_UNSIGNED",
         multMode = MultMode.MULT36X36,
         signed = false
       ),
       // Signed 36x36 multiplication
-      Mult18Config(
+      SysDSPconfig(
         name = "MULT36X36_SIGNED",
         multMode = MultMode.MULT36X36,
         signed = true
       ),
       // Shift left A operation
-      Mult18Config(
+      SysDSPconfig(
         name = "SHIFT_LEFT_A",
         aluMode = AluMode.SHIFTA,
         sourceA_MUX = SourceMuxMode.A,
         sourceB_MUX = SourceMuxMode.B
       ),
       // Shift right A operation
-      Mult18Config(
+      SysDSPconfig(
         name = "SHIFT_RIGHT_A",
         aluMode = AluMode.SHIFTA,
         sourceA_MUX = SourceMuxMode.SRIA,
         sourceB_MUX = SourceMuxMode.B
       ),
       // Shift left B operation
-      Mult18Config(
+      SysDSPconfig(
         name = "SHIFT_LEFT_B",
         aluMode = AluMode.SHIFTB,
         sourceA_MUX = SourceMuxMode.A,
         sourceB_MUX = SourceMuxMode.B
       ),
       // Shift right B operation
-      Mult18Config(
+      SysDSPconfig(
         name = "SHIFT_RIGHT_B",
         aluMode = AluMode.SHIFTB,
         sourceA_MUX = SourceMuxMode.A,
         sourceB_MUX = SourceMuxMode.SRIB
       ),
       // Shift left A and B operation
-      Mult18Config(
+      SysDSPconfig(
         name = "SHIFT_LEFT_AB",
         aluMode = AluMode.SHIFTAB,
         sourceA_MUX = SourceMuxMode.A,
         sourceB_MUX = SourceMuxMode.B
       ),
       // Shift right A and B operation
-      Mult18Config(
+      SysDSPconfig(
         name = "SHIFT_RIGHT_AB",
         aluMode = AluMode.SHIFTAB,
         sourceA_MUX = SourceMuxMode.SRIA,
@@ -410,21 +404,24 @@ class SysDSP_Mult18_Operation extends Component {
       )
     ).padTo(
       64,
-      Mult18Config()
+      SysDSPconfig()
     ) // Pad the sequence with default configs if there are less than 64 entries
   )
 
-  // Select the config based on the input selection
-  val config = configs.read(io.sel)
-  val sysDSP = new SysDSP_Wrapper(config)
+  // First DSP block
+  val dsp1 = new SysDSP_Wrapper(configs.read(io.sel))
+  dsp1.io.A := io.a.asUInt
+  dsp1.io.B := io.b.asUInt
+  dsp1.io.CLK0 := clock
+  dsp1.io.RST0 := reset
 
-  // Connect inputs to the sysDSP wrapper
-  sysDSP.io.A := io.a.asUInt
-  sysDSP.io.B := io.b.asUInt
-  sysDSP.io.C := io.c.asUInt
-  sysDSP.io.cascadeIn := io.cascadeIn.asUInt
+  // Second DSP block
+  val dsp2 = new SysDSP_Wrapper(configs.read(io.sel))
+  dsp2.io.A := dsp1.io.M(17 downto 0)
+  dsp2.io.B := dsp1.io.M(35 downto 18)
+  dsp2.io.CLK0 := clock
+  dsp2.io.RST0 := reset
+  dsp2.io.cascadeIn_MUX := Cascade.CASCADE
 
-  // Connect outputs
-  io.result := sysDSP.io.M.asSInt
-  io.cascadeOut := sysDSP.io.cascadeOut.asSInt
+  io.result := dsp2.io.M.asSInt
 }
