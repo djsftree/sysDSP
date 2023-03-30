@@ -444,69 +444,127 @@ class SysDSP_ALU extends Component {
 
 
 
-class SysDSP_ALU_Testbench extends Component {
-  
-  val io = new Bundle {
-    val a      = in Bits(32 bits)
-    val b      = in Bits(32 bits)
-    val c      = in Bits(32 bits)
-    val sel    = in Bits(6 bits)
-    val result = out Bits(64 bits)
+object SysDSP_ALU_Test extends App {
+
+  class SysDSP_ALU_Testbench extends Component {
+    val io = new Bundle {
+      val a = in Bits(32 bits)
+      val b = in Bits(32 bits)
+      val c = in Bits(32 bits)
+      val op = in UInt(6 bits)
+      val y = out Bits(32 bits)
+    }
+
+    val alu = new SysDSP_ALU()
+    alu.io.a := io.a.asSInt
+    alu.io.b := io.b.asSInt
+    alu.io.c := io.c.asSInt
+    alu.io.op := io.op
+
+    io.y := alu.io.y.asBits
   }
 
-  val alu = new SysDSP_ALU
-  
-  alu.io.a   := io.a
-  alu.io.b   := io.b
-  alu.io.c   := io.c
-  alu.io.sel := io.sel
-  io.result  := alu.io.result
+  SimConfig.withWave.doSim(new SysDSP_ALU_Testbench) { dut =>
+    val clockThread = fork {
+      dut.clockDomain.forkStimulus(2)
+    }
 
-  def test(a: Int, b: Int, c: Int, sel: Int, expectedResult: Int): Unit = {
-    
-    val clockPeriod = 10
-    val timeout = 1000
-    val dut = SimConfig.withWave.compile(new SysDSP_ALU_Testbench)
-    
-    dut.doSimUntilVoid { dut =>
-      
-      dut.clockDomain.forkStimulus(period = clockPeriod)
-      
+    def test(a: Int, b: Int, c: Int, op: Int, expected: Int): Unit = {
       dut.io.a #= a
       dut.io.b #= b
       dut.io.c #= c
-      dut.io.sel #= sel
-      
-      sleep(clockPeriod)
-      val result = dut.io.result.toInt
-      
-      assert(result == expectedResult, s"Unexpected result. Expected $expectedResult, but got $result")
-      
-    }(timeout)
+      dut.io.op #= op
+
+      sleep(1)
+
+      assert(dut.io.y.toInt == expected)
+    }
+    
+// Test case 1: Add
+tb.test(0x12345678, 0x87654321, 0, 0, 0x99999999)
+
+// Test case 2: Subtract
+tb.test(0x12345678, 0x87654321, 0, 1, 0x8AC91357)
+
+// Test case 3: Multiply
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 2, 0x1B851A50)
+
+// Test case 4: Multiply-Accumulate
+tb.test(0x1234ABCD, 0x5678DCBA, 0xCAFEBABE, 3, 0xEEFEBE0E)
+
+// Test case 5: Multiply-Accumulate with rounding
+tb.test(0x1234ABCD, 0x5678DCBA, 0xCAFEBABE, 4, 0xEEFEBE0F)
+
+// Test case 6: Bitwise AND
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 5, 0x02249088)
+
+// Test case 7: Bitwise OR
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 6, 0x567CDFDF)
+
+// Test case 8: Bitwise XOR
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 7, 0x54584D57)
+
+// Test case 9: Bitwise NOT A
+tb.test(0x1234ABCD, 0, 0, 8, 0xEDCB5432)
+
+// Test case 10: Bitwise NOT B
+tb.test(0, 0x5678DCBA, 0, 9, 0xA9872355)
+
+// Test case 11: Bitwise NAND
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 10, 0xFDDB6F77)
+
+// Test case 12: Bitwise NOR
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 11, 0x98932020)
+
+// Test case 13: Bitwise XNOR
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 12, 0xABF7B2A8)
+
+// Test case 14: Bitwise AND with complement of B
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 13, 0x10104C80)
+
+// Test case 15: Bitwise OR with complement of A
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 14, 0xFE7EBDFF)
+
+// Test case 16: Bitwise XOR with complement of A
+tb.test(0x1234ABCD, 0x5678DCBA, 0, 15, 0xEDCC98EE)
+
+// Test case 17: Bitwise AND with complement of A
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 17, 0x00005555)
+
+// Test case 18: Bitwise OR with complement of A
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 18, 0xFFFFFFFF)
+
+// Test case 19: Bitwise XOR with complement of B
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 19, 0x0000FFFF)
+
+// Test case 20: Bitwise AND with complement of B
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 20, 0x55550000)
+
+// Test case 21: Bitwise OR with complement of B
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 21, 0xFFFFFFFF)
+
+// Test case 22: Bitwise NOT of A
+tb.test(0x5555AAAA, 0, 0, 22, 0xAAAA5555)
+
+// Test case 23: Bitwise NOT of B
+tb.test(0, 0xAAAAAAAA, 0, 23, 0x55555555)
+
+// Test case 24: Bitwise AND with complement of (A XOR B)
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 24, 0x00000000)
+
+// Test case 25: Bitwise OR with complement of (A XOR B)
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 25, 0xFFFFFFFF)
+    
+// Test case 26: Bitwise NAND
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 26, 0xFFFF0000)
+
+// Test case 27: Bitwise NOR
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 27, 0x00000000)
+
+// Test case 28: Bitwise XNOR
+tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 28, 0x0000FFFF)
     
   }
   
 }
 
-
-object SysDSP_ALU_Test extends App {
-  
-  val tb = new SysDSP_ALU_Testbench
-
-  // Test case 1: Add
-  tb.test(0x12345678, 0x87654321, 0, 0, 0x99999999)
-
-  // Test case 2: Subtract
-  tb.test(0x12345678, 0x87654321, 0, 1, 0x8AC91357)
-
-  // Test case 3: Multiply
-  tb.test(0x1234ABCD, 0x5678DCBA, 0, 2, 0x1B851A50)
-
-  // Test case 4: Multiply-Accumulate
-  tb.test(0x1234ABCD, 0x5678DCBA, 0xCAFEBABE, 3, 0xEEFEBE0E)
-
-  // Test case 5: Multiply-Accumulate with rounding
-
-  ...
-  
-}
