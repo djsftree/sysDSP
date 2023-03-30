@@ -34,6 +34,8 @@ class SysDSP_Wrapper(config: Mult18Config) extends BlackBox {
     val MREG = config.MREG.value
     val SREG = config.SREG.value
     val SIGNED = config.signed.value
+    val SATURATION_MODE = config.saturationMode.value
+    val ROUNDING_MODE = config.roundingMode.value
   }
 
   val io = new Bundle {
@@ -81,6 +83,8 @@ class SysDSP_Wrapper(config: Mult18Config) extends BlackBox {
   addGeneric("MREG", generic.MREG)
   addGeneric("SREG", generic.SREG)
   addGeneric("SIGNED", generic.SIGNED)
+  addGeneric("SATURATION_MODE", generic.SATURATION_MODE)
+  addGeneric("ROUNDING_MODE", generic.ROUNDING_MODE)
 
   mapClockDomain(clockDomain)
   addRTLPath("path/to/your/SysDSP_Wrapper.v")
@@ -104,7 +108,9 @@ case class Mult18Config(
     CREG: Boolean = false,
     MREG: Boolean = false,
     SREG: Boolean = false,
-    signed: Boolean = true
+    signed: Boolean = true,
+    saturationMode: SpinalEnumElement[SpinalEnumCraft] = SaturationMode.NONE,
+    roundingMode: SpinalEnumElement[SpinalEnumCraft] = RoundingMode.TRUNC
 )
 
 object MultMode extends SpinalEnum {
@@ -209,6 +215,14 @@ object GSR extends SpinalEnum(binarySequential) {
 
 object SourceMuxMode extends SpinalEnum {
   val A, B, C, D, ADD, SRIA, SRIB, CASCADE_IN = newElement()
+}
+
+object SaturationMode extends SpinalEnum {
+  val NONE, OVERFLOW, SYMMETRIC = newElement()
+}
+
+object RoundingMode extends SpinalEnum {
+  val TRUNC, ROUND_HALF_UP, ROUND_HALF_DOWN, ROUND_HALF_TO_EVEN = newElement()
 }
 
 import spinal.core._
