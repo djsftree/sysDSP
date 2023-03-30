@@ -1,5 +1,7 @@
 import spinal.core._
-import spinal.lib._
+import spinal.sim._
+import spinal.core.sim._
+import scala.util.Random
 
 // The code defines a wrapper for a DSP block, which is a black box. The wrapper takes in configuration 
 // parameters for the DSP block and instantiates it with the given parameters. It also maps the clock 
@@ -436,4 +438,75 @@ class SysDSP_ALU extends Component {
     dsp2.io.B := 0
     dsp2.io.C := 0
   }
+}
+
+
+
+
+
+class SysDSP_ALU_Testbench extends Component {
+  
+  val io = new Bundle {
+    val a      = in Bits(32 bits)
+    val b      = in Bits(32 bits)
+    val c      = in Bits(32 bits)
+    val sel    = in Bits(6 bits)
+    val result = out Bits(64 bits)
+  }
+
+  val alu = new SysDSP_ALU
+  
+  alu.io.a   := io.a
+  alu.io.b   := io.b
+  alu.io.c   := io.c
+  alu.io.sel := io.sel
+  io.result  := alu.io.result
+
+  def test(a: Int, b: Int, c: Int, sel: Int, expectedResult: Int): Unit = {
+    
+    val clockPeriod = 10
+    val timeout = 1000
+    val dut = SimConfig.withWave.compile(new SysDSP_ALU_Testbench)
+    
+    dut.doSimUntilVoid { dut =>
+      
+      dut.clockDomain.forkStimulus(period = clockPeriod)
+      
+      dut.io.a #= a
+      dut.io.b #= b
+      dut.io.c #= c
+      dut.io.sel #= sel
+      
+      sleep(clockPeriod)
+      val result = dut.io.result.toInt
+      
+      assert(result == expectedResult, s"Unexpected result. Expected $expectedResult, but got $result")
+      
+    }(timeout)
+    
+  }
+  
+}
+
+
+object SysDSP_ALU_Test extends App {
+  
+  val tb = new SysDSP_ALU_Testbench
+
+  // Test case 1: Add
+  tb.test(0x12345678, 0x87654321, 0, 0, 0x99999999)
+
+  // Test case 2: Subtract
+  tb.test(0x12345678, 0x87654321, 0, 1, 0x8AC91357)
+
+  // Test case 3: Multiply
+  tb.test(0x1234ABCD, 0x5678DCBA, 0, 2, 0x1B851A50)
+
+  // Test case 4: Multiply-Accumulate
+  tb.test(0x1234ABCD, 0x5678DCBA, 0xCAFEBABE, 3, 0xEEFEBE0E)
+
+  // Test case 5: Multiply-Accumulate with rounding
+
+  ...
+  
 }
