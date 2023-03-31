@@ -28,6 +28,15 @@ import scala.util.Random
 // SourceMuxMode.CASCADE_IN, indicating that the cascadeIn and cascadeOut signals should be used for
 // the cascade input and output, respectively.
 
+val sysDSP_ClockDomain = ClockDomain(
+  clock = io.CLK0,
+  reset = io.RST0,
+  config = ClockDomainConfig(
+    resetKind = spinal.core.SYNC,
+    clockEdge = spinal.core.RISING
+  )
+)
+
 class SysDSP_Wrapper(config: SysDSPconfig) extends BlackBox {
 
   val generic = new Generic {
@@ -50,6 +59,8 @@ class SysDSP_Wrapper(config: SysDSPconfig) extends BlackBox {
   }
 
   val io = new Bundle {
+    
+    // inputs
     val A = in UInt (18 bits)
     val B = in UInt (18 bits)
     val C = in UInt (18 bits)
@@ -67,16 +78,19 @@ class SysDSP_Wrapper(config: SysDSPconfig) extends BlackBox {
     val MODE = in UInt (2 bits)
     val ACC_MODE = in Bool ()
     
+    // pipeline register eneables
+    val AREN = in Bool ()
+    val BREN = in Bool ()
+    val CREN = in Bool ()
+    val MREN = in Bool ()
+    val SREN = in Bool ()
+    
     val cascadeIn_MUX = in UInt(3 bits)
     val cascadeOut_MUX = in UInt(3 bits)
     val cascadeIn = in UInt(36 bits)
     val cascadeOut = out UInt(36 bits)
 
-    val CE0 = in Bool ()
-    val CE1 = in Bool ()
-    val CE2 = in Bool ()
-    val CE3 = in Bool ()
-
+    val CE0, CE1, CE2, CE3 = in Bool ()
     val CLK0, CLK1, CLK2, CLK3 = in Clock ()
     val RST0, RST1, RST2, RST3 = in Reset ()
 
@@ -99,8 +113,8 @@ class SysDSP_Wrapper(config: SysDSPconfig) extends BlackBox {
   addGeneric("SATURATION_MODE", generic.SATURATION_MODE)
   addGeneric("ROUNDING_MODE", generic.ROUNDING_MODE)
 
-  mapClockDomain(clockDomain)
-  addRTLPath("path/to/your/SysDSP_Wrapper.v")
+  mapClockDomain(sysDSP_ClockDomain)
+  // addRTLPath("path/to/your/SysDSP_Wrapper.v")
   noIoPrefix()
 }
 
@@ -414,19 +428,20 @@ class SysDSP_ALU extends Component {
   val dsp1 = new SysDSP_Wrapper(configs.read(io.sel))
   dsp1.io.A := io.a.asUInt
   dsp1.io.B := io.b.asUInt
+  dsp1.io.C := io.b.asUInt
   dsp1.io.CLK0 := clock
   dsp1.io.RST0 := reset
 
   // Second DSP block
   val dsp2 = new SysDSP_Wrapper(configs.read(io.sel))
-  dsp2.io.A := dsp1.io.M(17 downto 0)
-  dsp2.io.B := dsp1.io.M(35 downto 18)
+  dsp2.io.A := dsp1.io.a(17 downto 0)
+  dsp2.io.B := dsp1.io.b(35 downto 18)
+  dsp2.io.C := dsp1.io.c(35 downto 18)
   dsp2.io.CLK0 := clock
   dsp2.io.RST0 := reset
   
   dsp2.io.cascadeIn_MUX := Cascade.CASCADE
-  dsp2.io.cascadeOut := dsp1.io.cascadeIn
-  dsp2.io.cascadeOut := dsp.io.cascadeIn
+  dsp2.io.cascadeIn := dsp1.io.cascadeOut
   
   io.result := dsp2.io.M.asSInt
   
@@ -555,7 +570,7 @@ tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 24, 0x00000000)
 // Test case 25: Bitwise OR with complement of (A XOR B)
 tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 25, 0xFFFFFFFF)
     
-// Test case 26: Bitwise NAND
+// Test case 11: Bitwise NAND
 tb.test(0x5555AAAA, 0xAAAAAAAA, 0, 26, 0xFFFF0000)
 
 // Test case 27: Bitwise NOR
